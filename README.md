@@ -1,6 +1,10 @@
 swank-js
 ========
 
+** IMPORTANT NOTE **
+The primary swank-js source repository is now [https://github.com/swank-js/swank-js](https://github.com/swank-js/swank-js).
+
+
 swank-js provides [SLIME](http://common-lisp.net/project/slime/) REPL
 and other development tools for in-browser JavaScript and
 [Node.JS](http://nodejs.org). It consists of SWANK backend and
@@ -56,48 +60,76 @@ will be eventually added.
 Installation
 ------------
 
-1. Install [Node.JS](http://nodejs.org), [npm](http://npmjs.org/) and
-then [Socket.IO](http://socket.io/):
+1. Install [Node.JS](http://nodejs.org) and [npm](http://npmjs.org/)
 
-        npm install socket.io
-2. Get recent [SLIME](http://common-lisp.net/project/slime/) from its CVS
-or the [git mirror](http://git.boinkor.net/gitweb/slime.git).
-3. Make sure you have latest [js2-mode](http://code.google.com/p/js2-mode/).
+2. Install swank-js from npm:
+
+        npm install -g swank-js
+
+3. Get recent [SLIME](http://common-lisp.net/project/slime/) from its CVS
+or the [git mirror](http://git.boinkor.net/gitweb/slime.git). The backend
+was verified to work with SLIME 2012-02-12, it may or may not work with
+other versions, but note that breaking change in the protocol was introduced
+in SLIME 2011-11-27.
+
+4. Make sure you have latest [js2-mode](http://code.google.com/p/js2-mode/).
 Add it to your .emacs:
 
         (add-to-list 'load-path "/path/to/js2-mode/directory")
         (autoload 'js2-mode "js2-mode" nil t)
         (add-to-list 'auto-mode-alist '("\\.js$" . js2-mode))
-3. Create symbolic link to slime-js.el in the contrib subdirectory of
+
+5. Create symbolic link to slime-js.el in the contrib subdirectory of
 SLIME project.
-4. In your .emacs, add the following lines (you may use other key for
+
+6. Install [js2-mode](http://code.google.com/p/js2-mode/) into emacs from
+   http://tromey.com/elpa/
+
+7. In your .emacs, add the following lines (you may use other key for
 slime-js-reload; also, if you're already using SLIME, just add slime-js
 to the list of contribs, otherwise adjust the load-path item):
-
-        (add-to-list 'load-path "/path/to/slime/installation")
-        (require 'slime)
-        (slime-setup '(slime-repl slime-js))
 
         (global-set-key [f5] 'slime-js-reload)
         (add-hook 'js2-mode-hook
                   (lambda ()
                     (slime-js-minor-mode 1)))
-5. If you're using CSS mode, you may want to add the following lines too:
+
+8. If you're using CSS mode, you may want to add the following lines too:
 
         (add-hook 'css-mode-hook
                   (lambda ()
-                    (define-key css-mode-map "\M-\C-x" 'slime-js-refresh-css)))
+                    (define-key css-mode-map "\M-\C-x" 'slime-js-refresh-css)
+                    (define-key css-mode-map "\C-c\C-r" 'slime-js-embed-css)))
 
 Usage
 -----
 
-Start swank-js with the following command in the project directory:
+If you want to use swank from the node project just add following to your
+package.json file:
 
-    node swank.js
+        "devDependencies": {
+          "swank-js": ">=0.0.1"
+        },
+        "scripts": {
+          "swank": "node node_modules/swank-js"
+        }
 
-Make SLIME connect to the backend using M-x slime-connect and
-specifying localhost and port 4005. You will see REPL buffer with the
-following prompt:
+Once this is done you should be able to run up a swank for this project by
+running:
+
+        npm run swank
+
+Alternatively you can install swank-js globally by running:
+
+        npm install -g swank-js
+
+Once installed you could run it from you project directory:
+
+        swank-js
+
+Make SLIME connect to the backend using `M-x slime-connect` and
+specifying `localhost` and port `4005`. You will see REPL buffer
+with the following prompt:
 
     NODE>
 
@@ -107,6 +139,8 @@ around with it by running some JavaScript expressions.
 If you get warning about SLIME version mismatch, you may make it
 disappear until the next SLIME upgrade by typing *,js-slime-version*
 at the REPL and entering your SLIME version (e.g. 2010-11-13).
+
+### Connecting to a web browser ###
 
 Point your web browser to
 
@@ -157,6 +191,9 @@ The sticky remote selection is saved in the config file, ~/.swankjsrc,
 so you don't need to do *,sticky-select-remote* after restarting the
 browser.
 
+
+### Connecting to a remote page ###
+
 Now, let's try to make it work with an actual site. swank-js acts as a
 proxy between your browser and the site so it can inject necessary
 script tags into HTML pages and avoid cross-domain HTTP request
@@ -199,6 +236,11 @@ and press C-M-x. Now you may try it out in the REPL:
 You may edit the function definition and update it using C-M-x any
 number of times.
 
+
+### Hacking CSS ###
+
+#### By updating a file ####
+
 Now let's try some CSS hacking. Create a directory named zzz and start
 a Web server in it from your command prompt:
 
@@ -216,7 +258,7 @@ Now let's add the stylesheet to the reddit page:
 
     FIREFOX-3.6> $('head').append('<link rel="stylesheet" href="http://localhost:8000/a.css" type="text/css" />');
     [object Object]
-    
+
 You will see some parts of the page become green. Now, change green to
 blue in the CSS file and press C-M-x (it will save the file
 automatically):
@@ -231,6 +273,34 @@ AJAX application without reloading the page, which is often rather
 handy. Unlike editing CSS in Firebug in case when you're editing CSS
 of your own application changes will not disappear upon page reload
 (with reddit page you'll have to readd the stylesheet).
+
+
+#### By embedding CSS ####
+
+Alternatively to just try out a snippet of CSS you can select some CSS code and hit `C-c C-r`. This will send the code snippet (or the content of the whole buffer) to the browser and embed it inside a style element.
+
+To remove the embedded CSS run the command with a prefix `C-u C-c C-r`.
+
+
+### Embedding swank-js in a page ###
+
+This is useful for automatically connecting to a web page you develop
+locally without using the *,target-url* command and without changing
+the document URL for that page. When `node swank.js` is running embed
+
+    <script type="text/javascript" src="http://localhost:8009/swank-js/swank-js-inject.js"></script>
+
+and you are ready to go!
+
+### Swank js as a bookmarklet ###
+
+You can bookmark
+<a href="javascript:(function(d)%7Bwindow.swank_server%3D%27http%3A%2F%2Flocalhost%3A8009%2F%27%3Bif(!d.getElementById(%27swank-js-inj%27))%7Bvar%20h%3Dd.getElementsByTagName(%27head%27)%5B0%5D%2Cs%3Dd.createElement(%27script%27)%3Bs.id%3D%27swank-js-inj%27%3Bs.type%3D%27text%2Fjavascript%27%3Bs.src%3Dswank_server%2B%27swank-js%2Fswank-js-inject.js%27%3Bh.appendChild(s)%3B%7D%7D)(document)%3B">
+swank connect</a> /
+<a
+href="javascript:(function()%7BSwankJS.disconnect()%3B%7D)()%3B">swank
+disconnect</a>
+links and use them on any page you'd like to play with.
 
 Troubleshooting
 ---------------

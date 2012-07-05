@@ -1,6 +1,8 @@
+#!/usr/bin/env node
 // -*- mode: js2 -*-
 //
 // Copyright (c) 2010 Ivan Shvedunov. All rights reserved.
+// Copyright (c) 2012 Robert Krahn. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -42,7 +44,6 @@ var executive = new swh.Executive({ config: cfg });
 
 var swankServer = net.createServer(
   function (stream) {
-    stream.setEncoding("utf-8");
     var handler = new swh.Handler(executive);
     var parser = new swp.SwankParser(
       function onMessage (message) {
@@ -50,9 +51,9 @@ var swankServer = net.createServer(
       });
     handler.on(
       "response", function (response) {
-        var responseText = swp.buildMessage(response);
-        console.log("response: %s", responseText);
-        stream.write(responseText);
+        var responseBuf = swp.buildMessage(response);
+        console.log("response: %s", responseBuf.toString());
+        stream.write(responseBuf);
       });
     stream.on(
       "data", function (data) {
@@ -143,6 +144,11 @@ BrowserRemote.prototype.evaluate = function evaluate (id, str) {
   this.pendingRequests[id] = new Date().getTime();
 };
 
+BrowserRemote.prototype.completion = function completion (id, str) {
+  this.client.send(JSON.stringify({ "id": id, "completion": str }));
+  this.pendingRequests[id] = new Date().getTime();
+};
+
 BrowserRemote.prototype.disconnect = function disconnect () {
   this.sweepRequests(true);
   swh.Remote.prototype.disconnect.call(this);
@@ -159,11 +165,14 @@ HttpListener.prototype.clientVersion = "0.1";
 HttpListener.prototype.cachedFiles = {};
 
 HttpListener.prototype.clientFiles = {
-  'json2.js': 'json2.js',
-  'stacktrace.js': 'stacktrace.js',
-  'swank-js.js': 'swank-js.js',
-  'load.js': 'load.js',
-  'test.html': 'test.html'
+  'json2.js': 'client/json2.js',
+  'stacktrace.js': 'client/stacktrace.js',
+  'swank-js.js': 'client/swank-js.js',
+  'load.js': 'client/load.js',
+  'swank-js-inject.js': 'client/swank-js-inject.js',
+  'browser-tests.js': 'client/browser-tests.js',
+  'test.html': 'client/test.html',
+  'completion.js': 'completion.js'
 };
 
 HttpListener.prototype.types = {
@@ -172,11 +181,7 @@ HttpListener.prototype.types = {
 };
 
 HttpListener.prototype.scriptBlock =
-  new Buffer(
-    '<script type="text/javascript" src="/swank-js/json2.js"></script>' +
-    '<script type="text/javascript" src="/socket.io/socket.io.js"></script>' +
-    '<script type="text/javascript" src="/swank-js/stacktrace.js"></script>' +
-    '<script type="text/javascript" src="/swank-js/swank-js.js"></script>');
+    new Buffer('<script type="text/javascript" src="/swank-js/swank-js-inject.js"></script>');
 
 HttpListener.prototype.findClosingTag = function findClosingTag (buffer, name) {
   // note: this function is suitable for <head> and <body> tags,
@@ -366,9 +371,8 @@ HttpListener.prototype.serveClient = function serveClient(req, res) {
     return;
   }
   var file = path.substr(1).split('/').slice(1);
-
   var localPath = this.clientFiles[file];
-  if (req.method == 'GET' && localPath !== undefined){
+  if (req.method == 'GET' && localPath !== undefined) {
     // TBD: reenable caching, check datetime of the file
     // if (path in this.cachedFiles){
     //   this.sendCachedFile(req, res, path);
@@ -376,7 +380,7 @@ HttpListener.prototype.serveClient = function serveClient(req, res) {
     // }
 
     fs.readFile(
-      __dirname + '/client/' + localPath, function(err, data) {
+      __dirname + '/' + localPath, function(err, data) {
         if (err) {
           console.log("error: %s", err);
           self.notFound(res);
@@ -454,5 +458,3 @@ io.sockets.on(
 // TBD: fix all assert calls: we need (actual, expected) not (expected, actual)
 // TBD: invoke SwankJS.setup() only when DOM is ready (at least in IE)
 // TBD: timeouts for browser requests
-
-exports.executive = executive;

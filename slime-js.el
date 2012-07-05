@@ -1,29 +1,52 @@
-;;;
-;;; Copyright (c) 2010 Ivan Shvedunov. All rights reserved.
-;;;
-;;; Redistribution and use in source and binary forms, with or without
-;;; modification, are permitted provided that the following conditions
-;;; are met:
-;;;
-;;; * Redistributions of source code must retain the above copyright
-;;; notice, this list of conditions and the following disclaimer.
-;;;
-;;; * Redistributions in binary form must reproduce the above
-;;; copyright notice, this list of conditions and the following
-;;; disclaimer in the documentation and/or other materials
-;;; provided with the distribution.
-;;;
-;;; THIS SOFTWARE IS PROVIDED BY THE AUTHOR 'AS IS' AND ANY EXPRESSED
-;;; OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-;;; WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-;;; ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
-;;; DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-;;; DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-;;; GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-;;; INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-;;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-;;; NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-;;; SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+;;; slime-js.el --- Slime extension for swank-js.
+
+;; Author: Ivan Shvedunov
+;; Adapted-by: Irakli Gozalishvili
+;; URL: http://github.com/gozala/slime-js
+;; Version: 0.0.1
+;; Keywords: js, languages, lisp, slime
+;; Package-Requires: ((slime-repl "20100404") (slime "20100404"))
+
+;;; Licence: 
+;; Copyright (c) 2010 Ivan Shvedunov. All rights reserved.
+;;
+;; Redistribution and use in source and binary forms, with or without
+;; modification, are permitted provided that the following conditions
+;; are met:
+;;
+;; * Redistributions of source code must retain the above copyright
+;; notice, this list of conditions and the following disclaimer.
+;;
+;; * Redistributions in binary form must reproduce the above
+;; copyright notice, this list of conditions and the following
+;; disclaimer in the documentation and/or other materials
+;; provided with the distribution.
+;;
+;; THIS SOFTWARE IS PROVIDED BY THE AUTHOR 'AS IS' AND ANY EXPRESSED
+;; OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+;; WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+;; ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+;; DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+;; DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+;; GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+;; INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+;; NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+;; SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+(defgroup slime-js nil "Slime Extension for Swank.js"
+  :group 'slime-js)
+
+(defcustom  slime-js-swank-command "npm"
+  "Command for running the swank-js server from node.js"
+  :type 'string
+  :group 'slime-js)
+
+(defcustom slime-js-swank-args '("run" "swank")
+  "Command arguments for running the swank-js server from node.js.
+Note that file paths need to be complete file paths, i.e. ~ to /home/you or /Uesrs/you."
+  :type '(repeat (string :tag "Arg"))
+  :group 'slime-js)
 
 (define-slime-contrib slime-js
   "Emacs-side support for Swank-JS."
@@ -45,6 +68,14 @@
         (slime-repl-insert-prompt)
         (when (plusp previouse-point)
           (goto-char (+ previouse-point slime-repl-input-start-mark)))))))
+
+(defvar slime-js-swank-buffer 'nil)
+
+; Just the bare-simplest thing that can be done for now.
+(defun slime-js-run-swank ()
+  "Runs the swank side of the equation."
+  (interactive)
+  (setq slime-js-swank-buffer (apply #'make-comint "swank-js"  (expand-file-name slime-js-swank-command) nil slime-js-swank-args)))
 
 (defun slime-js-event-hook-function (event)
   (when (equal "JS" (slime-lisp-implementation-type))
@@ -79,7 +110,7 @@
          (p (or (position
                  (completing-read prompt (slime-bogus-completion-alist remote-names)
                                   nil nil nil
-                                  'slime-remote-history nil)
+                                  'slime-js-remote-history nil)
                  remote-names :test #'equal)
                 (error "bad remote name"))))
     (first (elt remotes p))))
@@ -132,6 +163,8 @@
         (message "Reloading the page"))))
 
 (defun slime-js-refresh-css ()
+  "If the current buffer points to a CSS file then the browser
+will reload it. Otherwise it will reload all linked stylesheets"
   (interactive)
   (slime-js-eval
    (format "SwankJS.refreshCSS('%s')"
@@ -143,6 +176,26 @@
               "")))
     #'(lambda (v)
         (message "Refreshing CSS"))))
+
+(defun slime-js-make-js-string (string)
+  "escapes the string so that it can be used as a string in js"
+  (concat "\"" (replace-regexp-in-string "\n" "\\n" string nil t) "\""))
+
+(defun slime-js-buffer-or-region-string ()
+  (let ((start (if (region-active-p) (region-beginning) (point-min)))
+         (end (if (region-active-p) (region-end) (point-max))))
+    (buffer-substring-no-properties start end)))
+
+(defun slime-js-embed-css (&optional arg)
+  "send an active region or the whole buffer string to the browser
+and embed it in a style element"
+  (interactive "P")
+  (let ((command (if arg "removeEmbeddedCSS" "embedCSS"))
+        (param (if arg "" (slime-js-make-js-string
+                           (slime-js-buffer-or-region-string)))))
+    (slime-js-eval
+     (format "SwankJS.%s(%s)" command param)
+     #'(lambda (v) (message "Embedding CSS")))))
 
 (defun slime-js-start-of-toplevel-form ()
   (interactive)

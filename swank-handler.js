@@ -1,6 +1,7 @@
 // -*- mode: js2; js-run: "swank-handler-tests.js" -*-
 //
 // Copyright (c) 2010 Ivan Shvedunov. All rights reserved.
+// Copyright (c) 2012 Robert Krahn. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -35,8 +36,14 @@ var assert = require("assert");
 var lisp = require("./lisp");
 var S = lisp.S, list = lisp.list, consp = lisp.consp, car = lisp.car, cdr = lisp.cdr,
     repr = lisp.repr, fromLisp = lisp.fromLisp, toLisp = lisp.toLisp;
+var Completion = require("./completion").Completion;
 
-var DEFAULT_SLIME_VERSION = "2010-11-13";
+var DEFAULT_SLIME_VERSION = "2012-02-12";
+
+// hack for require.resolve("./relative") to work properly.
+module.filename = process.cwd() + '/repl';
+// hack for repl require to work properly with node_modules folders
+module.paths = require('module')._nodeModulePaths(module.filename);
 
 function Handler (executive) {
   this.executive = executive;
@@ -82,8 +89,8 @@ Handler.prototype.receive = function receive (message) {
         r.result = toLisp(
           info,
           { "pid": "N:pid",
-            "encoding": { name: "encoding", spec: { "coding-system": "s:codingSystem",
-                                                    "external-format": "s:externalFormat" } },
+            "encoding": { name: "encoding",
+                          spec: { "coding-systems": "@:codingSystems" } },
             "package": { name: "packageSpec", spec: { name: "s", prompt: "s" } },
             "lisp-implementation": {
               name: "implementation",
@@ -166,6 +173,21 @@ Handler.prototype.receive = function receive (message) {
         cont();
       });
     return;
+  case "swank:fuzzy-completions":
+    // TBD
+    r.result = toLisp([[], []], "@");
+    cont();
+    return;
+  case "swank:simple-completions":
+    var prefix = d.form.args[0];
+    var objStr = fromLisp(prefix, "@");
+    console.log("Called " + "swank:simple-completions: " + objStr);
+    this.executive.listenerCompletion(
+      objStr, function (result) {
+        r.result = toLisp([ result.values, result.partial ], "@");
+        cont();
+      });
+    return;
   default:
     // FIXME: handle unknown commands
   }
@@ -205,6 +227,15 @@ Remote.prototype.evaluate = function evaluate (id, str) {
   throw new Error("must override Remote.prototype.evaluate()");
 };
 
+Remote.prototype.completer = function completer () {
+  return new Completion();
+};
+
+Remote.prototype.completion = function completion (id, str) {
+  console.log("complete: " + str);
+  this.sendResult(id, this.completer().complete(str));
+};
+
 Remote.prototype.fullName = function fullName () {
   return "(" + this.kind() + ") " + this.id();
 };
@@ -239,7 +270,12 @@ function DefaultRemote () {
   this.context = Script.createContext();
   for (var i in global) this.context[i] = global[i];
   this.context.module = module;
-  this.context.require = require;
+  this.context.require = function(id, options) {
+    // Remove module from cache if reload is requested.
+    if (options && options.reload)
+      delete require.cache[require.resolve(id)];
+    return require(id);
+  }
   var self = this;
   this.context._swank = {
     output: function output (arg) {
@@ -249,6 +285,16 @@ function DefaultRemote () {
 }
 
 util.inherits(DefaultRemote, Remote);
+
+DefaultRemote.prototype.completer = function completer () {
+  return new Completion(
+    {
+      global: this.context,
+      evaluate: function (str) {
+        return evalcx(str, this.context, "repl");
+      }.bind(this)
+    });
+};
 
 DefaultRemote.prototype.prompt = function prompt () {
   return "NODE";
@@ -350,7 +396,7 @@ Executive.prototype.connectionInfo = function connectionInfo (cont) {
     "slimeVersion",
     function (slimeVersion) {
       cont({ pid: self.pid === null ? process.pid : self.pid,
-             encoding: { codingSystem: "utf-8", externalFormat: "UTF-8" },
+             encoding: { codingSystems: [ "utf-8-unix" ] },
              packageSpec: { name: prompt, prompt: prompt },
              implementation: { type: "JS", name: "JS", version: "1.5" },
              version: slimeVersion || DEFAULT_SLIME_VERSION });
@@ -366,6 +412,12 @@ Executive.prototype.listenerEval = function listenerEval (str, cont) {
   var id = Executive.nextId++;
   this.pendingRequests[id] = cont;
   this.activeRemote.evaluate(id, str);
+};
+
+Executive.prototype.listenerCompletion = function listenerCompletion(str, cont) {
+  var id = Executive.nextId++;
+  this.pendingRequests[id] = cont;
+  this.activeRemote.completion(id, str);
 };
 
 Executive.prototype.listRemotes = function listRemotes () {
